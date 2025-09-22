@@ -1,0 +1,12 @@
+Checks: > 
+    -*, 
+    bugprone-*, 
+    performance-*,
+    portability-*,
+    readability-*,
+    modernize-*,
+    clang-analyzer-*
+WarningAsErrors: ''
+HeaderFilterRegex: '^(src|include)/'
+AnalyzeTemporaryDtors: false
+FormatStyle: none

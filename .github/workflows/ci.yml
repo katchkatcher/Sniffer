@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ clang-tidy cppcheck
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Run cppcheck
+        run: cppcheck --enable=all --std=c++17 --inline-suppr --error-exitcode=1 src include || true
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
