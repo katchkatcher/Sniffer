@@ -10,9 +10,13 @@ find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 if(CLANG_TIDY_EXE)
     set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_EXE})
 endif()
+
 find_program(CPPCHECK_EXE NAMES cppcheck)
 if(CPPCHECK_EXE)
-    set(CMAKE_CXX_CPPCHECK ${CPPCHECK_EXE};--enable=warning, style,perfomance, portability,--std=c++17; --inline-suppr)
+    set(CMAKE_CXX_CPPCHECK
+        ${CPPCHECK_EXE};--enable=warning,style,performance,portability
+        ;--std=c++17;--inline-suppr;--suppress=missingIncludeSystem
+    )
 endif()
 
 # исполняемый файл

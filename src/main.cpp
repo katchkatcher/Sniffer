@@ -17,14 +17,14 @@
 #include <errno.h>
 
 // красивый вывод IP адреса
-void print_mac(const char *label, unsigned char mac[6])
+void print_mac(const char *label, const unsigned char mac[6])
 {
     printf("%s: %02x:%02x:%02x:%02x:%02x:%02x\n",
            label, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 // вывод TCP флагов
-void print_tcp_flags(struct tcphdr *tcp)
+void print_tcp_flags(const struct tcphdr *tcp)
 {
     printf("TCP Flags: ");
     if (tcp->urg)
@@ -81,7 +81,7 @@ void analyze_packet(unsigned char *buffer, int size)
         return;
     }
 
-    struct ethhdr *eth = (struct ethhdr *)buffer;
+    const struct ethhdr *eth = reinterpret_cast<struct ethhdr *>(buffer);
     print_mac("MAC отправителя", eth->h_source);
     print_mac("MAC получателя", eth->h_dest);
 
@@ -93,7 +93,7 @@ void analyze_packet(unsigned char *buffer, int size)
     if (ntohs(eth->h_proto) == ETH_P_IP)
     {
         // длина ethernet заголовка
-        size_t eth_len = sizeof(struct ethhdr);
+        const size_t eth_len = sizeof(struct ethhdr);
 
         if (size < int(eth_len + sizeof(struct iphdr)))
         {
@@ -103,11 +103,11 @@ void analyze_packet(unsigned char *buffer, int size)
 
         // сдвигаем указатель на размер ethernet заголовка чтобы попасть на IP заголовок
         // указатель приводим к iphdr
-        struct iphdr *ip = (struct iphdr *)(buffer + eth_len);
+        const struct iphdr *ip = reinterpret_cast<struct iphdr *>(buffer + eth_len);
 
         // ihl - internet header length - длина ip заголовка
         // 32 бита слово умножаем и получаем всю длинну в байтах
-        size_t ip_hlen = ip->ihl * 4;
+        const size_t ip_hlen = ip->ihl * 4;
         if (ip_hlen < sizeof(struct iphdr) || size < (int)(eth_len + ip_hlen))
         {
             // zu нужен для вывода size_t
@@ -141,7 +141,7 @@ void analyze_packet(unsigned char *buffer, int size)
                 return;
             }
 
-            struct tcphdr *tcp = (struct tcphdr *)(buffer + eth_len + ip_hlen);
+            const struct tcphdr *tcp = reinterpret_cast<struct tcphdr *>(buffer + eth_len + ip_hlen);
             printf("TCP(отправитель -> получатель): %d -> %d\n", ntohs(tcp->source), ntohs(tcp->dest));
 
             print_tcp_flags(tcp);
@@ -154,7 +154,7 @@ void analyze_packet(unsigned char *buffer, int size)
                 return;
             }
 
-            struct udphdr *udp = (struct udphdr *)(buffer + eth_len + ip_hlen);
+            const struct udphdr *udp = reinterpret_cast<struct udphdr *>(buffer + eth_len + ip_hlen);
             printf("UDP(отправитель -> получатель): %d -> %d (len=%d)\n",
                    ntohs(udp->source), ntohs(udp->dest), ntohs(udp->len));
         }
@@ -217,12 +217,12 @@ int main()
     if (sockfd < 0)
     {
         perror("Ошибка создания сокета");
-        if(errno == EPERM || errno == EACCES)
-        {  
+        if (errno == EPERM || errno == EACCES)
+        {
             puts("Требуются права root или capability CAP_NET_RAW.\n"
-                "Варианты:\n"
-                "   sudo ./build/Sniffer\n"
-                "   или: sudo setcap cap_net_raw,cap_net_admin+eip ./build/Sniffer");
+                 "Варианты:\n"
+                 "   sudo ./build/Sniffer\n"
+                 "   или: sudo setcap cap_net_raw,cap_net_admin+eip ./build/Sniffer");
         }
         return 1;
     }
@@ -239,7 +239,7 @@ int main()
         struct sockaddr_ll addr;
         socklen_t addrlen = sizeof(addr);
         // будем фильтровать и получать только данные канального уровня
-        int size = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&addr, &addrlen);
+        int size = recvfrom(sockfd, buffer, sizeof(buffer), 0, reinterpret_cast<struct sockaddr *>(&addr), &addrlen);
 
         if (size < 0)
         {

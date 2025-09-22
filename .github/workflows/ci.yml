@@ -16,13 +16,13 @@ jobs:
           sudo apt-get install -y cmake g++ clang-tidy cppcheck
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
         run: cmake --build build -j
 
       - name: Run cppcheck
-        run: cppcheck --enable=all --std=c++17 --inline-suppr --error-exitcode=1 src include || true
+        run: cppcheck --project=build/compile_commands.json --inline-suppr --error-exitcode=1
 
       - name: Tests
         run: ctest --test-dir build --output-on-failure
