@@ -1,7 +1,38 @@
+# Build directories
 build/
+Testing/
 .cache/
-*.swp
-*.user
+
+# IDE files
 .vscode/
 .idea/
+*.user
+*.swp
+*.swo
+*~
+
+# Compilation artifacts
 compile_commands.json
+*.o
+*.so
+*.a
+*.dylib
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Runtime files
+*.log
+core
+*.dmp
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
