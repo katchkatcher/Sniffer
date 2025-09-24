@@ -1,12 +1,26 @@
-Checks: > 
-    -*, 
-    bugprone-*, 
-    performance-*,
-    portability-*,
-    readability-*,
-    modernize-*,
-    clang-analyzer-*
-WarningAsErrors: ''
-HeaderFilterRegex: '^(src|include)/'
-AnalyzeTemporaryDtors: false
-FormatStyle: none
+---
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -readability-uppercase-literal-suffix,
+  -readability-implicit-bool-conversion,
+  -modernize-avoid-c-arrays,
+  -readability-isolate-declaration
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '(include|src)/.*'  # Только ваш код
+CheckOptions:
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.FunctionCase  
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 25
