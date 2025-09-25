@@ -157,17 +157,6 @@ cppcheck --enable=warning,style,performance,portability --std=c++17 --inline-sup
 
 run-clang-tidy -p build
 ```
-
-
-## Отладка
-
-```bash
-gdb --args ./build/Sniffer
-```
-
-В конфигурации Debug проект собирается с AddressSanitizer (`-fsanitize=address`).
-
-
 ## Структура репозитория (основное)
 
 ```
