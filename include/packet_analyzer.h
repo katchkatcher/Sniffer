@@ -18,6 +18,8 @@ namespace sniffer
         uint64_t icmp_packets = 0;
         uint64_t other_packets = 0;
         uint64_t ipv4_packets = 0;
+        uint64_t ipv6_packets = 0;
+        uint64_t icmpv6_packets = 0;
         uint64_t total_bytes = 0;
         uint64_t arp_packets = 0;
 
@@ -52,13 +54,15 @@ namespace sniffer
 
         void analyze_ethernet(const unsigned char *buffer, int size);
         void analyze_ipv4(const unsigned char *buffer, int size, size_t eth_offset);
+        void analyze_ipv6(const unsigned char *buffer, int size, size_t eth_offset);
         void analyze_tcp(const unsigned char *buffer, int size, size_t ip_offset, size_t ip_header_len);
         void analyze_udp(const unsigned char *buffer, int size, size_t ip_offset, size_t ip_header_len);
         void analyze_icmp(const unsigned char *buffer, int size, size_t ip_offset, size_t ip_header_len);
+        void analyze_icmpv6(const unsigned char *buffer, int size, size_t ip_offset, size_t ip_header_len);
 
         void print_mac(const char *label, const unsigned char mac[6]) const;
         void print_tcp_flags(const struct tcphdr *tcp) const;
 
-        bool should_show_packet(const unsigned char* buffer, int size) const;
+        bool should_show_packet(const unsigned char *buffer, int size) const;
     };
 }

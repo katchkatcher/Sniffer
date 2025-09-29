@@ -3,7 +3,7 @@
 #include <cstring>
 #include <algorithm>
 
-CliOptions CliParser::parse(int argc, const char * const argv[])
+CliOptions CliParser::parse(int argc, const char *const argv[])
 {
     CliOptions options;
 
@@ -42,14 +42,14 @@ CliOptions CliParser::parse(int argc, const char * const argv[])
             {
                 std::string proto = argv[++i];
                 std::transform(proto.begin(), proto.end(), proto.begin(), ::tolower);
-                if (proto == "tcp" || proto == "udp" || proto == "icmp")
+                if (proto == "tcp" || proto == "udp" || proto == "icmp" || proto == "icmpv6")
                 {
                     options.protocol_filter = proto;
                 }
                 else
                 {
                     std::cerr << "Ошибка: неподдерживаемый протокол: " << proto << "\n";
-                    std::cerr << "Поддерживаемые: tcp, udp, icmp\n";
+                    std::cerr << "Поддерживаемые: tcp, udp, icmp, icmpv6\n";
                     std::exit(1);
                 }
             }
@@ -113,7 +113,7 @@ void CliParser::print_help()
     -v, --verbose           Подробный вывод (включая hex dump)
     -s, --stats             Показывать только статистику
     -i, --interface IFACE   Указать сетевой интерфейс
-    -p, --protocol PROTO    Фильтр по протоколу (tcp/udp/icmp)
+    -p, --protocol PROTO    Фильтр по протоколу (tcp/udp/icmp/icmpv6)
     --ip IP                 Фильтр по IP адресу
     --port PORT             Фильтр по номеру порта
 
