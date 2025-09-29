@@ -10,6 +10,7 @@
 #include <linux/if_ether.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/in.h>
@@ -27,9 +28,11 @@ namespace sniffer
                   << "=== СТАТИСТИКА ПАКЕТОВ ===" << Format::reset() << "\n";
         std::cout << "Всего пакетов: " << Format::bold() << total_packets << Format::reset() << "\n";
         std::cout << "IPv4 пакетов:  " << ipv4_packets << "\n";
+        std::cout << "IPv6 пакетов:  " << ipv6_packets << "\n";
         std::cout << "TCP пакетов:   " << Format::green() << tcp_packets << Format::reset() << "\n";
         std::cout << "UDP пакетов:   " << Format::blue() << udp_packets << Format::reset() << "\n";
         std::cout << "ICMP пакетов:  " << Format::yellow() << icmp_packets << Format::reset() << "\n";
+        std::cout << "ICMPv6 пакетов:" << icmpv6_packets << "\n";
         std::cout << "ARP пакетов:   " << arp_packets << "\n";
         std::cout << "Прочие пакеты: " << other_packets << "\n";
         std::cout << "Общий объём:   " << total_bytes << " байт\n";
@@ -107,6 +110,13 @@ namespace sniffer
             analyze_ipv4(buffer, size, l3_offset);
             stats_.ipv4_packets++;
         }
+        else if (ether_type == ETH_P_IPV6)
+        {
+            if (verbose_mode_ && !quiet_mode_)
+                std::cout << " (IPv6)" << Format::reset() << "\n";
+            analyze_ipv6(buffer, size, l3_offset);
+            stats_.ipv6_packets++;
+        }
         else if (ether_type == ETH_P_ARP)
         {
             if (verbose_mode_ && !quiet_mode_)
@@ -132,6 +142,177 @@ namespace sniffer
             stats_.other_packets++;
         }
         std::cout << std::dec;
+    }
+
+    void PacketAnalyzer::analyze_ipv6(const unsigned char *buffer, int size, size_t eth_offset)
+    {
+        // Минимальная проверка длины IPv6 заголовка (40 байт)
+        if (size < static_cast<int>(eth_offset + 40))
+        {
+            if (!quiet_mode_)
+                std::cout << "Пакет усечён: нет полного IPv6 заголовка\n";
+            return;
+        }
+        struct ip6_hdr ip6{};
+        std::memcpy(&ip6, buffer + eth_offset, sizeof(ip6));
+
+        char src_ip[INET6_ADDRSTRLEN];
+        char dst_ip[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &ip6.ip6_src, src_ip, sizeof(src_ip));
+        inet_ntop(AF_INET6, &ip6.ip6_dst, dst_ip, sizeof(dst_ip));
+
+        if (verbose_mode_ && !quiet_mode_)
+        {
+            std::cout << "IPv6: " << Format::green() << src_ip << Format::reset()
+                      << " -> " << Format::green() << dst_ip << Format::reset() << "\n";
+        }
+
+        // Фильтрация по IP
+        if (filter_.ip_address.has_value())
+        {
+            const std::string &f = filter_.ip_address.value();
+            if (!(f == src_ip || f == dst_ip))
+                return;
+        }
+
+        // Обработка цепочки extension headers: пока пропускаем их простым итеративным проходом.
+        uint8_t next = ip6.ip6_nxt;
+        size_t l4_offset = eth_offset + sizeof(ip6);
+        bool done = false;
+        // Набор простых extension header типов
+        while (!done)
+        {
+            switch (next)
+            {
+            case 0:  // Hop-by-Hop Options
+            case 43: // Routing
+            case 44: // Fragment
+            case 50: // ESP (не можем корректно пропарсить, выходим)
+            case 51: // AH
+            case 60: // Destination Options
+            {
+                if (size < static_cast<int>(l4_offset + 2))
+                {
+                    if (!quiet_mode_)
+                        std::cout << "IPv6 extension header усечён\n";
+                    return;
+                }
+                // Extension header: 1-й байт Next, 2-й Hdr Ext Len (в 8-байтовых блоках без первых 8 байт)
+                uint8_t ext_next = buffer[l4_offset];
+                uint8_t hdr_len_units = buffer[l4_offset + 1];
+                size_t ext_len = static_cast<size_t>(hdr_len_units + 1) * 8; // RFC 8200
+                if (size < static_cast<int>(l4_offset + ext_len))
+                {
+                    if (!quiet_mode_)
+                        std::cout << "IPv6 extension header усечён (length)\n";
+                    return;
+                }
+                next = ext_next;
+                l4_offset += ext_len;
+                break;
+            }
+            default:
+                done = true;
+                break;
+            }
+        }
+
+        // Фильтр по протоколу
+        if (filter_.protocol.has_value())
+        {
+            const std::string &pf = filter_.protocol.value();
+            if ((pf == "tcp" && next != IPPROTO_TCP) ||
+                (pf == "udp" && next != IPPROTO_UDP) ||
+                (pf == "icmp" && next != IPPROTO_ICMP) ||
+                (pf == "icmpv6" && next != IPPROTO_ICMPV6))
+            {
+                return;
+            }
+        }
+
+        // Разбор L4
+        if (next == IPPROTO_TCP)
+        {
+            stats_.tcp_packets++;
+            if (verbose_mode_)
+                analyze_tcp(buffer, size, eth_offset + 0, l4_offset - eth_offset); // ip_header_len = l4_offset - eth_offset
+            else if (!quiet_mode_)
+            {
+                if (size >= static_cast<int>(l4_offset + sizeof(struct tcphdr)))
+                {
+                    struct tcphdr tcp_local{};
+                    std::memcpy(&tcp_local, buffer + l4_offset, sizeof(tcp_local));
+                    uint16_t sport = ntohs(tcp_local.source);
+                    uint16_t dport = ntohs(tcp_local.dest);
+                    if (filter_.port.has_value() && !(sport == filter_.port.value() || dport == filter_.port.value()))
+                        return;
+                    std::cout << "TCP " << src_ip << ":" << sport << " -> " << dst_ip << ":" << dport << " (IPv6)\n";
+                }
+            }
+        }
+        else if (next == IPPROTO_UDP)
+        {
+            stats_.udp_packets++;
+            if (verbose_mode_)
+                analyze_udp(buffer, size, eth_offset + 0, l4_offset - eth_offset);
+            else if (!quiet_mode_)
+            {
+                if (size >= static_cast<int>(l4_offset + sizeof(struct udphdr)))
+                {
+                    struct udphdr udp_local{};
+                    std::memcpy(&udp_local, buffer + l4_offset, sizeof(udp_local));
+                    uint16_t sport = ntohs(udp_local.source);
+                    uint16_t dport = ntohs(udp_local.dest);
+                    if (filter_.port.has_value() && !(sport == filter_.port.value() || dport == filter_.port.value()))
+                        return;
+                    std::cout << "UDP " << src_ip << ":" << sport << " -> " << dst_ip << ":" << dport << " (IPv6)\n";
+                }
+            }
+        }
+        else if (next == IPPROTO_ICMPV6)
+        {
+            stats_.icmpv6_packets++;
+            if (verbose_mode_)
+                analyze_icmpv6(buffer, size, eth_offset + 0, l4_offset - eth_offset);
+            else if (!quiet_mode_)
+            {
+                if (size >= static_cast<int>(l4_offset + 4)) // ICMPv6 base header 4 bytes
+                {
+                    uint8_t type = buffer[l4_offset];
+                    uint8_t code = buffer[l4_offset + 1];
+                    std::cout << "ICMPv6 " << src_ip << " -> " << dst_ip
+                              << " type=" << static_cast<int>(type)
+                              << " code=" << static_cast<int>(code) << "\n";
+                }
+            }
+        }
+        else
+        {
+            stats_.other_packets++;
+            if (!quiet_mode_ && !verbose_mode_)
+            {
+                std::cout << "IPv6 " << Format::l4_name(next) << " "
+                          << src_ip << " -> " << dst_ip << "\n";
+            }
+        }
+    }
+
+    void PacketAnalyzer::analyze_icmpv6(const unsigned char *buffer, int size, size_t ip_offset, size_t ip_header_len)
+    {
+        size_t icmpv6_offset = ip_offset + ip_header_len;
+        if (size < static_cast<int>(icmpv6_offset + 4))
+        {
+            if (!quiet_mode_)
+                std::cout << "Пакет усечён: нет полного ICMPv6 заголовка\n";
+            return;
+        }
+        uint8_t type = buffer[icmpv6_offset];
+        uint8_t code = buffer[icmpv6_offset + 1];
+        if (!quiet_mode_)
+        {
+            std::cout << Format::yellow() << "ICMPv6: " << Format::reset()
+                      << "type=" << static_cast<int>(type) << " code=" << static_cast<int>(code) << "\n";
+        }
     }
 
     void PacketAnalyzer::print_mac(const char *label, const unsigned char mac[6]) const
@@ -480,19 +661,41 @@ namespace sniffer
             et = ntohs(inner_be);
             l3 += 4;
         }
-        if (et != ETH_P_IP)
+        if (et == ETH_P_IP)
+        {
+            if (size < static_cast<int>(l3 + sizeof(struct iphdr)))
+                return true;
+            struct iphdr ip{};
+            std::memcpy(&ip, buffer + l3, sizeof(ip));
+            const std::string &pf = filter_.protocol.value();
+            if (pf == "tcp" && ip.protocol != IPPROTO_TCP)
+                return false;
+            if (pf == "udp" && ip.protocol != IPPROTO_UDP)
+                return false;
+            if (pf == "icmp" && ip.protocol != IPPROTO_ICMP)
+                return false;
+            if (pf == "icmpv6")
+                return false;
             return true;
-        if (size < static_cast<int>(l3 + sizeof(struct iphdr)))
+        }
+        else if (et == ETH_P_IPV6)
+        {
+            if (size < static_cast<int>(l3 + 40)) // базовый IPv6 заголовок
+                return true;
+            // Быстрый просмотр Next Header
+            uint8_t next = buffer[l3 + 6]; // в ip6_hdr поле ip6_ctlun.ip6_un1.ip6_un1_nxt смещено, но стандартное оффсет 6 байт от начала
+            // Упрощённо: не разворачиваем extension headers на этой стадии
+            const std::string &pf = filter_.protocol.value();
+            if (pf == "tcp" && next != IPPROTO_TCP)
+                return false;
+            if (pf == "udp" && next != IPPROTO_UDP)
+                return false;
+            if (pf == "icmp" && next != IPPROTO_ICMP)
+                return false; // icmpv4 запрос к ipv6 не подходит
+            if (pf == "icmpv6" && next != IPPROTO_ICMPV6)
+                return false;
             return true;
-        struct iphdr ip{};
-        std::memcpy(&ip, buffer + l3, sizeof(ip));
-        const std::string &pf = filter_.protocol.value();
-        if (pf == "tcp" && ip.protocol != IPPROTO_TCP)
-            return false;
-        if (pf == "udp" && ip.protocol != IPPROTO_UDP)
-            return false;
-        if (pf == "icmp" && ip.protocol != IPPROTO_ICMP)
-            return false;
-        return true;
+        }
+        return true; // другие EtherType пропускаем
     }
 }

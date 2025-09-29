@@ -111,6 +111,15 @@ int main(int argc, char *argv[])
     if (!options.stats_only)
         std::cout << Format::green() << "Сниффер запущен. Нажмите Ctrl+C для завершения работы." << Format::reset() << "\n\n";
 
+    // небольшой таймаут чтения, чтобы сокет периодически «просыпался» и проверял stop
+    struct timeval tv{};
+    tv.tv_sec = 1; // 1 сек
+    tv.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+    {
+        perror("setsockopt(SO_RCVTIMEO)");
+    }
+
     while (!stop)
     {
         unsigned char buffer[65536];
@@ -123,19 +132,21 @@ int main(int argc, char *argv[])
 
         if (size < 0)
         {
-            if (!stop)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                perror("Ошибка приёма пакета");
+                // таймаут — просто продолжаем цикл, даём шанс проверке stop
+                continue;
             }
-            break;
-        }
-
-        // если не eth пакет
-        if (addr.sll_hatype != ARPHRD_ETHER)
-        {
-            // просто скипаем
+            if (!stop)
+                perror("Ошибка приёма пакета");
+            else
+                break;
             continue;
         }
+
+        // Разрешаем Ethernet и Loopback (ARPHRD_LOOPBACK), остальные игнорируем
+        if (!(addr.sll_hatype == ARPHRD_ETHER || addr.sll_hatype == ARPHRD_LOOPBACK))
+            continue;
 
         if (!options.stats_only && options.verbose)
         {
@@ -143,8 +154,9 @@ int main(int argc, char *argv[])
             char ifname[IF_NAMESIZE] = {0};
             if_indextoname(addr.sll_ifindex, ifname);
             std::cout << Format::blue() << "Interface: " << ifname
-                      << ", Type: " << addr.sll_pkttype
-                      << ", Protocol: 0x" << std::hex << ntohs(addr.sll_protocol)
+                      << ", ARPHRD: " << addr.sll_hatype
+                      << ", PKT-TYPE: " << addr.sll_pkttype
+                      << ", Proto: 0x" << std::hex << ntohs(addr.sll_protocol)
                       << std::dec << Format::reset() << "\n";
         }
 
@@ -152,7 +164,6 @@ int main(int argc, char *argv[])
         {
             // Применяем фильтры и анализируем
             analyzer.analyze_packet(buffer, size);
-
         }
     }
 

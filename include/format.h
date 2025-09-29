@@ -78,6 +78,8 @@ namespace Format
             return "UDP";
         case IPPROTO_ICMP:
             return "ICMP";
+        case IPPROTO_ICMPV6:
+            return "ICMPv6";
         default:
         {
             // для неизвестных протоколов будет локальный буфер
@@ -97,6 +99,8 @@ namespace Format
         case IPPROTO_UDP:
             return blue();
         case IPPROTO_ICMP:
+            return yellow();
+        case IPPROTO_ICMPV6:
             return yellow();
         default:
             return "";
